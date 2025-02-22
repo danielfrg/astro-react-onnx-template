@@ -210,6 +210,8 @@ cython_debug/
 # Project
 ###################
 
+public/onnxruntime-web
+
 # public/models/*
 # !public/models/.gitkeep
 

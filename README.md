@@ -26,3 +26,22 @@ and possible also convert them to ORT:
 onnxsim model model.sim.onnx
 uv run python -m onnxruntime.tools.convert_onnx_models_to_ort model.onnx
 ```
+
+## Web setup
+
+Regular astro website:
+
+```
+npm install
+```
+
+Copy the WASM ONNX Runtime from `node_modules` to the to the `/public` dir so
+they can be loaded.
+
+```
+just copy-onnx-wasm
+```
+
+```
+npm run dev
+```
