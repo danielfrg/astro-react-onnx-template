@@ -8,10 +8,10 @@ import type {
 import { Tensor } from "onnxruntime-web";
 
 // Important for the onnxruntime-web to work
-ort.env.wasm.wasmPaths = "/onnxruntime-web/";
+ort.env.wasm.wasmPaths = "/astro-react-onnx-template/onnxruntime-web/";
 
 // Target model
-const MODEL_PATH = "/models/double_vector.onnx";
+const MODEL_PATH = "/astro-react-onnx-template/models/double_vector.onnx";
 
 class DoubleModel {
   private session: ort.InferenceSession | null = null;
