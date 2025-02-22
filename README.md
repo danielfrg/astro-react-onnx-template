@@ -6,6 +6,10 @@ to run it, all in client side.
 - Creates a test model is that doubles a vector
 - Web Worker that loads the models and communicates with a React Component
 
+Demo: [danielfrg.github.io/astro-react-onnx-template](https://danielfrg.github.io/astro-react-onnx-template/)
+
+![alt text](https://github.com/danielfrg/astro-react-onnx-template/blob/main/public/images/preview.png?raw=true)
+
 ## Create the test model
 
 This is done using Python, since most models are done in Python.
