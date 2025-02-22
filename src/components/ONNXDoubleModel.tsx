@@ -5,7 +5,6 @@ const OnnxDoubleModel: React.FC = () => {
   const [inputValue, setInputValue] = useState<string>("1,2,3,4");
 
   const { modelState, result, runInference } = useONNXModel({
-    workerPath: "../workers/worker_onnx_double.ts",
     onError: (error) => console.error("Model error:", error),
   });
 

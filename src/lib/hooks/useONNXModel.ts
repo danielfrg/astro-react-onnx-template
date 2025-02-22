@@ -1,12 +1,13 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import type { ModelState, WorkerMessage, ModelResult } from "../workers/types";
 
+import MyWorker from "../workers/worker_onnx_double.ts?worker";
+
 export interface UseONNXModelOptions {
-  workerPath: string;
   onError?: (error: string) => void;
 }
 
-export function useONNXModel({ workerPath, onError }: UseONNXModelOptions) {
+export function useONNXModel({ onError }: UseONNXModelOptions) {
   const [modelState, setModelState] = useState<ModelState>({
     device: null,
     loading: false,
@@ -21,9 +22,12 @@ export function useONNXModel({ workerPath, onError }: UseONNXModelOptions) {
   useEffect(() => {
     if (!workerRef.current) {
       try {
-        workerRef.current = new Worker(new URL(workerPath, import.meta.url), {
-          type: "module",
-        });
+        // workerRef.current = new Worker(new URL(workerPath, import.meta.url), {
+        //   type: "module",
+        // });
+        const worker = new MyWorker();
+        workerRef.current = worker;
+
         workerRef.current.addEventListener("message", handleWorkerMessage);
         workerRef.current.postMessage({ type: "ping" });
         setModelState((prev) => ({ ...prev, loading: true }));
@@ -47,7 +51,7 @@ export function useONNXModel({ workerPath, onError }: UseONNXModelOptions) {
         workerRef.current = null;
       }
     };
-  }, [workerPath]);
+  }, []);
 
   const handleWorkerMessage = useCallback(
     (event: MessageEvent<WorkerMessage>) => {
