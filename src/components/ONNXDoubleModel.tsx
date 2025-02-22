@@ -1,16 +1,15 @@
 import React, { useState, useCallback } from "react";
-import { useONNXModel } from "../lib/useONNXModel";
+import { useONNXModel } from "../lib/hooks/useONNXModel";
 
 const OnnxDoubleModel: React.FC = () => {
   const [inputValue, setInputValue] = useState<string>("1,2,3,4");
 
   const { device, loading, status, result, inferenceTime, runInference } =
     useONNXModel({
-      workerPath: "../lib/worker_onnx_double.ts",
+      workerPath: "../workers/worker_onnx_double.ts",
       onError: (error) => console.error("Model error:", error),
     });
 
-  // Handle form submission
   const handleRunInference = useCallback(() => {
     try {
       const input = inputValue.split(",").map((val) => parseFloat(val.trim()));
@@ -25,7 +24,6 @@ const OnnxDoubleModel: React.FC = () => {
     }
   }, [inputValue, runInference]);
 
-  // Get status badge color based on current status
   const getStatusBadgeColor = useCallback(() => {
     if (status.includes("Error"))
       return "bg-red-100 text-red-800 border-red-200";
@@ -77,7 +75,7 @@ const OnnxDoubleModel: React.FC = () => {
 
           {/* Main content */}
           <div className="p-6">
-            {/* Input section */}
+            {/* Input */}
             <div className="mb-6">
               <h2 className="text-lg font-semibold text-slate-800 mb-3">
                 Input Vector
@@ -105,7 +103,7 @@ const OnnxDoubleModel: React.FC = () => {
               </div>
             </div>
 
-            {/* Output section */}
+            {/* Output */}
             {result && (
               <div className="mb-6 p-4 border border-slate-200 rounded-lg bg-slate-50">
                 <h2 className="text-lg font-semibold text-slate-800 mb-2">

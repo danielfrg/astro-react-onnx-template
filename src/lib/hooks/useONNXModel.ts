@@ -1,33 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import type { ModelState, WorkerMessage, ModelResult } from "../workers/types";
 
-// Types for the model state
-export interface ModelState {
-  device: string | null;
-  loading: boolean;
-  status: string;
-  inferenceTime: number | null;
-}
-
-// Types for worker messages
-export interface WorkerMessage {
-  type: "status" | "pong" | "error" | "stats" | "result";
-  data: any;
-}
-
-// Types for model results
-export interface ModelResult {
-  output: number[];
-  duration: number;
-}
-
-// Hook options
 export interface UseONNXModelOptions {
   workerPath: string;
   onError?: (error: string) => void;
 }
 
 export function useONNXModel({ workerPath, onError }: UseONNXModelOptions) {
-  // State
   const [modelState, setModelState] = useState<ModelState>({
     device: null,
     loading: false,
@@ -36,9 +15,11 @@ export function useONNXModel({ workerPath, onError }: UseONNXModelOptions) {
   });
 
   const [result, setResult] = useState<number[] | null>(null);
+
+  // Worker reference
   const workerRef = useRef<Worker | null>(null);
 
-  // Initialize worker
+  // Start worker
   useEffect(() => {
     if (!workerRef.current) {
       try {
@@ -46,6 +27,8 @@ export function useONNXModel({ workerPath, onError }: UseONNXModelOptions) {
           type: "module",
         });
         workerRef.current.addEventListener("message", handleWorkerMessage);
+
+        // Initialize worker, load model
         workerRef.current.postMessage({ type: "ping" });
 
         setModelState((prev) => ({ ...prev, loading: true }));
@@ -54,6 +37,8 @@ export function useONNXModel({ workerPath, onError }: UseONNXModelOptions) {
           error instanceof Error
             ? error.message
             : "Failed to initialize worker";
+
+        // Send error
         onError?.(errorMessage);
         setModelState((prev) => ({
           ...prev,
@@ -71,7 +56,6 @@ export function useONNXModel({ workerPath, onError }: UseONNXModelOptions) {
     };
   }, [workerPath]);
 
-  // Handle worker messages
   const handleWorkerMessage = useCallback(
     (event: MessageEvent<WorkerMessage>) => {
       const { type, data } = event.data;
@@ -81,7 +65,7 @@ export function useONNXModel({ workerPath, onError }: UseONNXModelOptions) {
           setModelState((prev) => ({ ...prev, status: data.message }));
           break;
 
-        case "pong":
+        case "pong": {
           const { success, device, warning } = data;
           if (success) {
             setModelState((prev) => ({
@@ -100,6 +84,7 @@ export function useONNXModel({ workerPath, onError }: UseONNXModelOptions) {
             }));
           }
           break;
+        }
 
         case "error":
           setModelState((prev) => ({
@@ -110,7 +95,7 @@ export function useONNXModel({ workerPath, onError }: UseONNXModelOptions) {
           onError?.(data.message);
           break;
 
-        case "result":
+        case "result": {
           const result = data as ModelResult;
           setResult(result.output);
           setModelState((prev) => ({
@@ -120,6 +105,7 @@ export function useONNXModel({ workerPath, onError }: UseONNXModelOptions) {
             inferenceTime: result.duration,
           }));
           break;
+        }
 
         default:
           console.warn("Unknown message type:", type);
@@ -128,7 +114,6 @@ export function useONNXModel({ workerPath, onError }: UseONNXModelOptions) {
     [onError],
   );
 
-  // Run inference
   const runInference = useCallback(
     (input: number[]) => {
       if (!workerRef.current || modelState.loading) return;
@@ -149,6 +134,7 @@ export function useONNXModel({ workerPath, onError }: UseONNXModelOptions) {
       } catch (error) {
         const errorMessage =
           error instanceof Error ? error.message : "Unknown error";
+
         setModelState((prev) => ({
           ...prev,
           status: `Error running inference: ${errorMessage}`,
@@ -157,7 +143,7 @@ export function useONNXModel({ workerPath, onError }: UseONNXModelOptions) {
         onError?.(errorMessage);
       }
     },
-    [modelState.loading, onError],
+    [modelState.loading],
   );
 
   return {

@@ -1,4 +1,10 @@
 import * as ort from "onnxruntime-web/all";
+import type {
+  ModelStats,
+  SessionResult,
+  ModelResult,
+  WorkerRequest,
+} from "./types";
 import { Tensor } from "onnxruntime-web";
 
 // Set WASM path
@@ -6,24 +12,20 @@ ort.env.wasm.wasmPaths = "/onnxruntime-web/";
 
 const MODEL_PATH = "/models/double_vector.onnx";
 
-const stats = {
+const stats: ModelStats = {
   device: "unknown",
   loadTime: 0,
 };
 
-// Class that handles the ONNX model inference
 class DoubleModel {
-  constructor() {
-    this.session = null;
-    this.buffer = null;
-  }
+  private session: ort.InferenceSession | null = null;
+  private buffer: ArrayBuffer | null = null;
 
-  async loadModel() {
+  async loadModel(): Promise<boolean> {
     console.log("Loading model from", MODEL_PATH);
     try {
       const startTime = performance.now();
 
-      // Load the model file
       const response = await fetch(MODEL_PATH);
       if (!response.ok) {
         throw new Error(
@@ -41,15 +43,13 @@ class DoubleModel {
     }
   }
 
-  async createSession() {
+  async createSession(): Promise<SessionResult> {
     if (!this.buffer) {
       throw new Error("Model not loaded. Call loadModel first.");
     }
 
-    let success = false;
-
     // Try each execution provider
-    for (let ep of ["webgpu", "cpu"]) {
+    for (const ep of ["webgpu", "cpu"] as const) {
       try {
         console.log(`Trying execution provider: ${ep}`);
 
@@ -58,18 +58,20 @@ class DoubleModel {
         });
 
         stats.device = ep;
-        success = true;
-
         console.log(`Successfully created session with ${ep}`);
+
         return { success: true, device: ep };
       } catch (e) {
         console.warn(`Execution provider ${ep} not available:`, e);
         continue;
       }
     }
+
+    // If we get here, no execution provider worked
+    throw new Error("No available execution provider");
   }
 
-  async run(inputData) {
+  async run(inputData: number[]): Promise<ModelResult> {
     // If session wasn't created, try one more time
     if (!this.session) {
       console.warn("Session not created before run. Attempting to create now.");
@@ -93,7 +95,7 @@ class DoubleModel {
       const duration = performance.now() - startTime;
 
       return {
-        output: Array.from(results.output.data),
+        output: Array.from(results.output.data as Float32Array),
         duration,
       };
     } catch (error) {
@@ -107,7 +109,7 @@ class DoubleModel {
 const model = new DoubleModel();
 
 // Handle communication with the main thread
-self.onmessage = async (e) => {
+self.onmessage = async (e: MessageEvent<WorkerRequest>) => {
   const { type, data } = e.data;
 
   try {
@@ -138,21 +140,19 @@ self.onmessage = async (e) => {
           data: {
             success: true,
             device: "fallback",
-            warning: error.message,
+            warning: error instanceof Error ? error.message : "Unknown error",
           },
         });
       }
 
       self.postMessage({ type: "stats", data: stats });
-    } else if (type === "run") {
-      const inputData = data.input;
-
+    } else if (type === "run" && data?.input) {
       self.postMessage({
         type: "status",
         data: { message: "Running inference..." },
       });
 
-      const result = await model.run(inputData);
+      const result = await model.run(data.input);
 
       self.postMessage({
         type: "result",
@@ -166,7 +166,9 @@ self.onmessage = async (e) => {
   } catch (error) {
     self.postMessage({
       type: "error",
-      data: { message: error.message },
+      data: {
+        message: error instanceof Error ? error.message : "Unknown error",
+      },
     });
   }
 };
