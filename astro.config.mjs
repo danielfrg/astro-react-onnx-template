@@ -6,6 +6,9 @@ import tailwindcss from "@tailwindcss/vite";
 
 // https://astro.build/config
 export default defineConfig({
+  site: "https://danielfrg.github.io",
+  base: "/astro-react-onnx-template",
+
   integrations: [react()],
 
   vite: {
