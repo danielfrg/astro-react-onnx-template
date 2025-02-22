@@ -29,6 +29,8 @@ jobs:
           node-version: "22"
           cache: "npm"
 
+      - uses: extractions/setup-just@v2
+
       - name: Setup Pages
         uses: actions/configure-pages@v4
 
