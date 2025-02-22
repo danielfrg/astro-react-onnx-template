@@ -4,6 +4,7 @@ import type {
   SessionResult,
   ModelResult,
   WorkerRequest,
+  WorkerMessage,
 } from "./types";
 import { Tensor } from "onnxruntime-web";
 
@@ -89,8 +90,7 @@ class DoubleModel {
       // Create a tensor from the input data
       const inputTensor = new Tensor("float32", inputData, [inputData.length]);
 
-      // Run inference
-      const results = await this.session.run({ input: inputTensor });
+      const results = await this.session!.run({ input: inputTensor });
 
       const duration = performance.now() - startTime;
 
@@ -105,70 +105,99 @@ class DoubleModel {
   }
 }
 
-// Create an instance
+// Create Model instance
 const model = new DoubleModel();
 
-// Handle communication with the main thread
+const sendMessage = (message: WorkerMessage) => {
+  // self is the global scope in a Worker
+  self.postMessage(message);
+};
+
+const sendError = (error: unknown) => {
+  sendMessage({
+    type: "error",
+    data: {
+      message: error instanceof Error ? error.message : "Unknown error",
+    },
+  });
+};
+
+const sendStatus = (message: string) => {
+  sendMessage({
+    type: "status",
+    data: { message },
+  });
+};
+
+const handleModelInit = async () => {
+  sendStatus("Loading model...");
+
+  try {
+    await model.loadModel();
+    sendStatus("Creating session...");
+
+    const sessionResult = await model.createSession();
+    sendMessage({
+      type: "pong",
+      data: sessionResult,
+    });
+  } catch (error) {
+    console.error("Error during initialization:", error);
+    // Still signal that we're loaded, but with a warning
+    sendMessage({
+      type: "pong",
+      data: {
+        success: true,
+        device: "fallback",
+        warning: error instanceof Error ? error.message : "Unknown error",
+      },
+    });
+  }
+
+  sendMessage({ type: "stats", data: stats });
+};
+
+const handleModelRun = async (input: unknown) => {
+  if (!input) {
+    throw new Error("No input provided for run command");
+  }
+
+  sendStatus("Running inference...");
+  const result = await model.run(input);
+  // await sleep(1000);
+  sendMessage({
+    type: "result",
+    data: result,
+  });
+};
+
+// Handle messages from the main thread
 self.onmessage = async (e: MessageEvent<WorkerRequest>) => {
   const { type, data } = e.data;
 
   try {
-    if (type === "ping") {
-      self.postMessage({
-        type: "status",
-        data: { message: "Loading model..." },
-      });
+    switch (type) {
+      case "ping":
+        await handleModelInit();
+        break;
 
-      try {
-        await model.loadModel();
-        self.postMessage({
-          type: "status",
-          data: { message: "Creating session..." },
-        });
+      case "run":
+        await handleModelRun(data?.input);
+        break;
 
-        const sessionResult = await model.createSession();
+      case "stats":
+        sendMessage({ type: "stats", data: stats });
+        break;
 
-        self.postMessage({
-          type: "pong",
-          data: sessionResult,
-        });
-      } catch (error) {
-        console.error("Error during initialization:", error);
-        // Still signal that we're loaded, but with a warning
-        self.postMessage({
-          type: "pong",
-          data: {
-            success: true,
-            device: "fallback",
-            warning: error instanceof Error ? error.message : "Unknown error",
-          },
-        });
-      }
-
-      self.postMessage({ type: "stats", data: stats });
-    } else if (type === "run" && data?.input) {
-      self.postMessage({
-        type: "status",
-        data: { message: "Running inference..." },
-      });
-
-      const result = await model.run(data.input);
-
-      self.postMessage({
-        type: "result",
-        data: result,
-      });
-    } else if (type === "stats") {
-      self.postMessage({ type: "stats", data: stats });
-    } else {
-      console.error(`Unknown message type: ${type}`);
+      default:
+        console.error(`Unknown message type: ${type}`);
+        break;
     }
   } catch (error) {
-    self.postMessage({
-      type: "error",
-      data: {
-        message: error instanceof Error ? error.message : "Unknown error",
-      },
-    });
+    sendError(error);
   }
 };
+
+export function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}

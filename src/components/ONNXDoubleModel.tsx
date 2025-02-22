@@ -4,11 +4,10 @@ import { useONNXModel } from "../lib/hooks/useONNXModel";
 const OnnxDoubleModel: React.FC = () => {
   const [inputValue, setInputValue] = useState<string>("1,2,3,4");
 
-  const { device, loading, status, result, inferenceTime, runInference } =
-    useONNXModel({
-      workerPath: "../workers/worker_onnx_double.ts",
-      onError: (error) => console.error("Model error:", error),
-    });
+  const { modelState, result, runInference } = useONNXModel({
+    workerPath: "../workers/worker_onnx_double.ts",
+    onError: (error) => console.error("Model error:", error),
+  });
 
   const handleRunInference = useCallback(() => {
     try {
@@ -22,18 +21,21 @@ const OnnxDoubleModel: React.FC = () => {
     } catch (error) {
       console.error("Input error:", error);
     }
-  }, [inputValue, runInference]);
+  }, [inputValue]);
 
   const getStatusBadgeColor = useCallback(() => {
-    if (status.includes("Error"))
+    if (modelState.status.includes("Error"))
       return "bg-red-100 text-red-800 border-red-200";
-    if (status.includes("warnings"))
+    if (modelState.status.includes("warnings"))
       return "bg-yellow-100 text-yellow-800 border-yellow-200";
-    if (status.includes("complete") || status.includes("successfully"))
+    if (
+      modelState.status.includes("complete") ||
+      modelState.status.includes("successfully")
+    )
       return "bg-green-100 text-green-800 border-green-200";
-    if (loading) return "bg-blue-100 text-blue-800 border-blue-200";
+    if (modelState.loading) return "bg-blue-100 text-blue-800 border-blue-200";
     return "bg-gray-100 text-gray-800 border-gray-200";
-  }, [status, loading]);
+  }, [modelState]);
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100 py-12 px-4 sm:px-6 lg:px-8">
@@ -45,9 +47,9 @@ const OnnxDoubleModel: React.FC = () => {
               <h1 className="text-2xl font-bold text-white">
                 ONNX Double Vector Model
               </h1>
-              {device && (
+              {modelState.device && (
                 <div className="mt-2 sm:mt-0 px-3 py-1 rounded-full bg-white/20 text-white text-sm font-medium">
-                  Running on {device.toUpperCase()}
+                  Running on {modelState.device.toUpperCase()}
                 </div>
               )}
             </div>
@@ -62,10 +64,10 @@ const OnnxDoubleModel: React.FC = () => {
               <span
                 className={`text-sm px-2.5 py-0.5 rounded-full border ${getStatusBadgeColor()}`}
               >
-                {status}
+                {modelState.status}
               </span>
 
-              {loading && (
+              {modelState.loading && (
                 <div className="ml-2">
                   <div className="animate-spin w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full"></div>
                 </div>
@@ -87,18 +89,18 @@ const OnnxDoubleModel: React.FC = () => {
                   onChange={(e) => setInputValue(e.target.value)}
                   placeholder="Enter comma-separated numbers"
                   className="flex-1 p-2 border border-slate-300 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
-                  disabled={loading}
+                  disabled={modelState.loading}
                 />
                 <button
                   onClick={handleRunInference}
-                  disabled={loading}
+                  disabled={modelState.loading}
                   className={`px-5 py-2 rounded-md font-medium transition-colors ${
-                    loading
+                    modelState.loading
                       ? "bg-slate-400 text-white cursor-not-allowed"
                       : "bg-blue-600 text-white hover:bg-blue-700 shadow-sm"
                   }`}
                 >
-                  {loading ? "Running..." : "Run Model"}
+                  {modelState.loading ? "Running..." : "Run Model"}
                 </button>
               </div>
             </div>
@@ -112,9 +114,9 @@ const OnnxDoubleModel: React.FC = () => {
                 <div className="p-3 bg-white border border-slate-200 rounded-md font-mono text-slate-700">
                   {result.join(", ")}
                 </div>
-                {inferenceTime && (
+                {modelState.inferenceTime && (
                   <div className="mt-3 flex items-center text-sm text-slate-500">
-                    Inference time: {inferenceTime.toFixed(2)} ms
+                    Inference time: {modelState.inferenceTime.toFixed(2)} ms
                   </div>
                 )}
               </div>

@@ -147,7 +147,7 @@ export function useONNXModel({ workerPath, onError }: UseONNXModelOptions) {
   );
 
   return {
-    ...modelState,
+    modelState,
     result,
     runInference,
   };
