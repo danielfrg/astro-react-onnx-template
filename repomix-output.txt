@@ -45,278 +45,223 @@ Additional Info:
 ================================================================
 Directory Structure
 ================================================================
-components/
-  ONNXDoubleModel.jsx
-layouts/
-  Layout.astro
-lib/
-  worker_onnx_double.js
-pages/
-  index.astro
-styles/
-  global.css
+hooks/
+  useONNXModel.ts
+workers/
+  types.ts
+  worker_onnx_double.ts
 
 ================================================================
 Files
 ================================================================
 
 ================
-File: components/ONNXDoubleModel.jsx
+File: hooks/useONNXModel.ts
 ================
-import React, { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
+import type { ModelState, WorkerMessage, ModelResult } from "../workers/types";
 
-export default function OnnxBaseTest() {
-  // State variables
-  const [device, setDevice] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [status, setStatus] = useState("Initializing");
-  const [inputValue, setInputValue] = useState("1,2,3,4");
-  const [outputValue, setOutputValue] = useState(null);
-  const [inferenceTime, setInferenceTime] = useState(null);
+export interface UseONNXModelOptions {
+  workerPath: string;
+  onError?: (error: string) => void;
+}
 
-  const workerRef = useRef(null);
+export function useONNXModel({ workerPath, onError }: UseONNXModelOptions) {
+  const [modelState, setModelState] = useState<ModelState>({
+    device: null,
+    loading: false,
+    status: "Initializing",
+    inferenceTime: null,
+  });
 
-  // Initialize web worker
+  const [result, setResult] = useState<number[] | null>(null);
+
+  // Worker reference
+  const workerRef = useRef<Worker | null>(null);
+
+  // Start worker
   useEffect(() => {
-    console.log("workerRef.current", workerRef.current);
     if (!workerRef.current) {
-      workerRef.current = new Worker(
-        new URL("../lib/worker_onnx_double.js", import.meta.url),
-        {
+      try {
+        workerRef.current = new Worker(new URL(workerPath, import.meta.url), {
           type: "module",
-        },
-      );
-      workerRef.current.addEventListener("message", onWorkerMessage);
-      workerRef.current.postMessage({ type: "ping" });
+        });
+        workerRef.current.addEventListener("message", handleWorkerMessage);
 
-      setLoading(true);
+        // Initialize worker, load model
+        workerRef.current.postMessage({ type: "ping" });
+
+        setModelState((prev) => ({ ...prev, loading: true }));
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error
+            ? error.message
+            : "Failed to initialize worker";
+
+        // Send error
+        onError?.(errorMessage);
+        setModelState((prev) => ({
+          ...prev,
+          status: `Error: ${errorMessage}`,
+          loading: false,
+        }));
+      }
     }
 
     return () => {
       if (workerRef.current) {
         workerRef.current.terminate();
+        workerRef.current = null;
       }
     };
-  }, []);
+  }, [workerPath]);
 
-  // Handle worker messages
-  const onWorkerMessage = (event) => {
-    const { type, data } = event.data;
+  const handleWorkerMessage = useCallback(
+    (event: MessageEvent<WorkerMessage>) => {
+      const { type, data } = event.data;
 
-    if (type === "status") {
-      setStatus(data.message);
-    } else if (type === "pong") {
-      const { success, device, warning } = data;
+      switch (type) {
+        case "status":
+          setModelState((prev) => ({ ...prev, status: data.message }));
+          break;
 
-      if (success) {
-        setLoading(false);
-        setDevice(device);
-        if (warning) {
-          setStatus(
-            `Model loaded with warnings: ${warning} - You may still be able to run inference.`,
-          );
-        } else {
-          setStatus("Model loaded successfully. Ready to run inference.");
+        case "pong": {
+          const { success, device, warning } = data;
+          if (success) {
+            setModelState((prev) => ({
+              ...prev,
+              loading: false,
+              device,
+              status: warning
+                ? `Model loaded with warnings: ${warning} - You may still be able to run inference.`
+                : "Model loaded successfully. Ready to run inference.",
+            }));
+          } else {
+            setModelState((prev) => ({
+              ...prev,
+              loading: false,
+              status: "Error loading model (check console)",
+            }));
+          }
+          break;
         }
 
-        runInference();
-      } else {
-        setStatus("Error loading model (check console)");
+        case "error":
+          setModelState((prev) => ({
+            ...prev,
+            loading: false,
+            status: `Error: ${data.message}`,
+          }));
+          onError?.(data.message);
+          break;
+
+        case "result": {
+          const result = data as ModelResult;
+          setResult(result.output);
+          setModelState((prev) => ({
+            ...prev,
+            loading: false,
+            status: "Inference complete",
+            inferenceTime: result.duration,
+          }));
+          break;
+        }
+
+        default:
+          console.warn("Unknown message type:", type);
       }
-    } else if (type === "error") {
-      setLoading(false);
-      setStatus(`Error: ${data.message}`);
-    } else if (type === "stats") {
-      setStats(data);
-    } else if (type === "result") {
-      setOutputValue(data.output);
-      setInferenceTime(data.duration);
-      setLoading(false);
-      setStatus("Inference complete");
-    }
-  };
-
-  // Run inference with the current input
-  const runInference = () => {
-    if (!workerRef.current || loading) return;
-
-    try {
-      // Parse the input values
-      const input = inputValue.split(",").map((val) => parseFloat(val.trim()));
-
-      // Check if any values are NaN
-      if (input.some(isNaN)) {
-        setStatus("Invalid input. Please enter comma-separated numbers.");
-        return;
-      }
-
-      // Send to worker
-      workerRef.current.postMessage({
-        type: "run",
-        data: { input },
-      });
-
-      setLoading(true);
-      setStatus("Running inference...");
-      setOutputValue(null);
-      setInferenceTime(null);
-    } catch (error) {
-      setStatus(`Error parsing input: ${error.message}`);
-    }
-  };
-
-  // Request stats from worker
-  const handleRequestStats = () => {
-    if (workerRef.current) {
-      workerRef.current.postMessage({ type: "stats" });
-      setShowStats(true);
-    }
-  };
-
-  // Get status badge color based on current status
-  const getStatusBadgeColor = () => {
-    if (status.includes("Error"))
-      return "bg-red-100 text-red-800 border-red-200";
-    if (status.includes("warnings"))
-      return "bg-yellow-100 text-yellow-800 border-yellow-200";
-    if (status.includes("complete") || status.includes("successfully"))
-      return "bg-green-100 text-green-800 border-green-200";
-    if (loading) return "bg-blue-100 text-blue-800 border-blue-200";
-    return "bg-gray-100 text-gray-800 border-gray-200";
-  };
-
-  return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-3xl mx-auto">
-        <div className="bg-white rounded-xl shadow-lg overflow-hidden">
-          {/* Header */}
-          <div className="bg-gradient-to-r from-blue-600 to-indigo-700 px-6 py-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between">
-              <h1 className="text-2xl font-bold text-white">
-                ONNX Runtime Test
-              </h1>
-              {device && (
-                <div className="mt-2 sm:mt-0 px-3 py-1 rounded-full bg-white/20 text-white text-sm font-medium">
-                  Running on {device.toUpperCase()}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Status bar */}
-          <div className="px-6 py-3 bg-slate-50 border-b border-slate-200">
-            <div className="flex items-center">
-              <span className="text-sm font-medium text-slate-600 mr-2">
-                Status:
-              </span>
-              <span
-                className={`text-sm px-2.5 py-0.5 rounded-full border ${getStatusBadgeColor()}`}
-              >
-                {status}
-              </span>
-
-              {loading && (
-                <div className="ml-2">
-                  <div className="animate-spin w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full"></div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Main content */}
-          <div className="p-6">
-            {/* Input section */}
-            <div className="mb-6">
-              <h2 className="text-lg font-semibold text-slate-800 mb-3">
-                Input Vector
-              </h2>
-              <div className="flex flex-col sm:flex-row gap-3">
-                <input
-                  type="text"
-                  value={inputValue}
-                  onChange={(e) => setInputValue(e.target.value)}
-                  placeholder="Enter comma-separated numbers"
-                  className="flex-1 p-2 border border-slate-300 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
-                  disabled={loading}
-                />
-                <button
-                  onClick={runInference}
-                  disabled={loading}
-                  className={`px-5 py-2 rounded-md font-medium transition-colors ${
-                    loading
-                      ? "bg-slate-400 text-white cursor-not-allowed"
-                      : "bg-blue-600 text-white hover:bg-blue-700 shadow-sm"
-                  }`}
-                >
-                  {loading ? "Running..." : "Run Model"}
-                </button>
-              </div>
-              <p className="mt-2 text-sm text-slate-500">
-                Expected behavior: This model doubles each number in the input
-                vector
-              </p>
-            </div>
-
-            {/* Output section */}
-            {outputValue && (
-              <div className="mb-6 p-4 border border-slate-200 rounded-lg bg-slate-50">
-                <h2 className="text-lg font-semibold text-slate-800 mb-2">
-                  Output Vector
-                </h2>
-                <div className="p-3 bg-white border border-slate-200 rounded-md font-mono text-slate-700">
-                  {outputValue.join(", ")}
-                </div>
-                {inferenceTime && (
-                  <div className="mt-3 flex items-center text-sm text-slate-500">
-                    <svg
-                      className="w-4 h-4 mr-1"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                      xmlns="http://www.w3.org/2000/svg"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth="2"
-                        d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                      ></path>
-                    </svg>
-                    Inference time: {inferenceTime.toFixed(2)} ms
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
+    },
+    [onError],
   );
+
+  const runInference = useCallback(
+    (input: number[]) => {
+      if (!workerRef.current || modelState.loading) return;
+
+      try {
+        workerRef.current.postMessage({
+          type: "run",
+          data: { input },
+        });
+
+        setModelState((prev) => ({
+          ...prev,
+          loading: true,
+          status: "Running inference...",
+          inferenceTime: null,
+        }));
+        setResult(null);
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error ? error.message : "Unknown error";
+
+        setModelState((prev) => ({
+          ...prev,
+          status: `Error running inference: ${errorMessage}`,
+          loading: false,
+        }));
+        onError?.(errorMessage);
+      }
+    },
+    [modelState.loading],
+  );
+
+  return {
+    modelState,
+    result,
+    runInference,
+  };
 }
 
 ================
-File: layouts/Layout.astro
+File: workers/types.ts
 ================
----
-import "../styles/global.css"
----
+export interface ModelStats {
+  device: string;
+  loadTime: number;
+}
 
-<!doctype html>
-<html lang="en">
-	<head>
-		<meta charset="UTF-8" />
-		<meta name="viewport" content="width=device-width" />
-		<title>Astro Basics</title>
-	</head>
-	<body>
-		<slot />
-	</body>
-</html>
+export interface SessionResult {
+  success: boolean;
+  device: string;
+  warning?: string;
+}
+
+export interface ModelResult {
+  output: number[];
+  duration: number;
+}
+
+export interface ModelState {
+  device: string | null;
+  loading: boolean;
+  status: string;
+  inferenceTime: number | null;
+}
+
+export interface WorkerMessage {
+  type: "status" | "pong" | "error" | "stats" | "result";
+  data: any;
+}
+
+export interface WorkerRequest {
+  type: "ping" | "run" | "stats";
+  data?: {
+    input?: number[];
+  };
+}
 
 ================
-File: lib/worker_onnx_double.js
+File: workers/worker_onnx_double.ts
 ================
 import * as ort from "onnxruntime-web/all";
+import type {
+  ModelStats,
+  SessionResult,
+  ModelResult,
+  WorkerRequest,
+  WorkerMessage,
+} from "./types";
 import { Tensor } from "onnxruntime-web";
 
 // Set WASM path
@@ -324,24 +269,20 @@ ort.env.wasm.wasmPaths = "/onnxruntime-web/";
 
 const MODEL_PATH = "/models/double_vector.onnx";
 
-const stats = {
+const stats: ModelStats = {
   device: "unknown",
   loadTime: 0,
 };
 
-// Class that handles the ONNX model inference
 class DoubleModel {
-  constructor() {
-    this.session = null;
-    this.buffer = null;
-  }
+  private session: ort.InferenceSession | null = null;
+  private buffer: ArrayBuffer | null = null;
 
-  async loadModel() {
+  async loadModel(): Promise<boolean> {
     console.log("Loading model from", MODEL_PATH);
     try {
       const startTime = performance.now();
 
-      // Load the model file
       const response = await fetch(MODEL_PATH);
       if (!response.ok) {
         throw new Error(
@@ -359,15 +300,13 @@ class DoubleModel {
     }
   }
 
-  async createSession() {
+  async createSession(): Promise<SessionResult> {
     if (!this.buffer) {
       throw new Error("Model not loaded. Call loadModel first.");
     }
 
-    let success = false;
-
     // Try each execution provider
-    for (let ep of ["webgpu", "cpu"]) {
+    for (const ep of ["webgpu", "cpu"] as const) {
       try {
         console.log(`Trying execution provider: ${ep}`);
 
@@ -376,18 +315,20 @@ class DoubleModel {
         });
 
         stats.device = ep;
-        success = true;
-
         console.log(`Successfully created session with ${ep}`);
+
         return { success: true, device: ep };
       } catch (e) {
         console.warn(`Execution provider ${ep} not available:`, e);
         continue;
       }
     }
+
+    // If we get here, no execution provider worked
+    throw new Error("No available execution provider");
   }
 
-  async run(inputData) {
+  async run(inputData: number[]): Promise<ModelResult> {
     // If session wasn't created, try one more time
     if (!this.session) {
       console.warn("Session not created before run. Attempting to create now.");
@@ -405,13 +346,12 @@ class DoubleModel {
       // Create a tensor from the input data
       const inputTensor = new Tensor("float32", inputData, [inputData.length]);
 
-      // Run inference
-      const results = await this.session.run({ input: inputTensor });
+      const results = await this.session!.run({ input: inputTensor });
 
       const duration = performance.now() - startTime;
 
       return {
-        output: Array.from(results.output.data),
+        output: Array.from(results.output.data as Float32Array),
         duration,
       };
     } catch (error) {
@@ -421,90 +361,102 @@ class DoubleModel {
   }
 }
 
-// Create an instance
+// Create Model instance
 const model = new DoubleModel();
 
-// Handle communication with the main thread
-self.onmessage = async (e) => {
+const sendMessage = (message: WorkerMessage) => {
+  // self is the global scope in a Worker
+  self.postMessage(message);
+};
+
+const sendError = (error: unknown) => {
+  sendMessage({
+    type: "error",
+    data: {
+      message: error instanceof Error ? error.message : "Unknown error",
+    },
+  });
+};
+
+const sendStatus = (message: string) => {
+  sendMessage({
+    type: "status",
+    data: { message },
+  });
+};
+
+const handleModelInit = async () => {
+  sendStatus("Loading model...");
+
+  try {
+    await model.loadModel();
+    sendStatus("Creating session...");
+
+    const sessionResult = await model.createSession();
+    sendMessage({
+      type: "pong",
+      data: sessionResult,
+    });
+  } catch (error) {
+    console.error("Error during initialization:", error);
+    // Still signal that we're loaded, but with a warning
+    sendMessage({
+      type: "pong",
+      data: {
+        success: true,
+        device: "fallback",
+        warning: error instanceof Error ? error.message : "Unknown error",
+      },
+    });
+  }
+
+  sendMessage({ type: "stats", data: stats });
+};
+
+const handleModelRun = async (input: unknown) => {
+  if (!input) {
+    throw new Error("No input provided for run command");
+  }
+
+  sendStatus("Running inference...");
+  const result = await model.run(input);
+  // await sleep(1000);
+  sendMessage({
+    type: "result",
+    data: result,
+  });
+};
+
+// Handle messages from the main thread
+self.onmessage = async (e: MessageEvent<WorkerRequest>) => {
   const { type, data } = e.data;
 
   try {
-    if (type === "ping") {
-      self.postMessage({
-        type: "status",
-        data: { message: "Loading model..." },
-      });
+    switch (type) {
+      case "ping":
+        await handleModelInit();
+        break;
 
-      try {
-        await model.loadModel();
-        self.postMessage({
-          type: "status",
-          data: { message: "Creating session..." },
-        });
+      case "run":
+        await handleModelRun(data?.input);
+        break;
 
-        const sessionResult = await model.createSession();
+      case "stats":
+        sendMessage({ type: "stats", data: stats });
+        break;
 
-        self.postMessage({
-          type: "pong",
-          data: sessionResult,
-        });
-      } catch (error) {
-        console.error("Error during initialization:", error);
-        // Still signal that we're loaded, but with a warning
-        self.postMessage({
-          type: "pong",
-          data: {
-            success: true,
-            device: "fallback",
-            warning: error.message,
-          },
-        });
-      }
-
-      self.postMessage({ type: "stats", data: stats });
-    } else if (type === "run") {
-      const inputData = data.input;
-
-      self.postMessage({
-        type: "status",
-        data: { message: "Running inference..." },
-      });
-
-      const result = await model.run(inputData);
-
-      self.postMessage({
-        type: "result",
-        data: result,
-      });
-    } else if (type === "stats") {
-      self.postMessage({ type: "stats", data: stats });
-    } else {
-      console.error(`Unknown message type: ${type}`);
+      default:
+        console.error(`Unknown message type: ${type}`);
+        break;
     }
   } catch (error) {
-    self.postMessage({
-      type: "error",
-      data: { message: error.message },
-    });
+    sendError(error);
   }
 };
 
-================
-File: pages/index.astro
-================
----
-import Layout from '../layouts/Layout.astro';
-import Component from '../components/ONNXDoubleModel.jsx';
----
-
-<Layout>
-    <Component client:load />
-</Layout>
-
-================
-File: styles/global.css
-================
-@import "tailwindcss";
+export function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 
 

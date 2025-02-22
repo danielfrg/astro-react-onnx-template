@@ -7,7 +7,7 @@
     "build": "astro build",
     "preview": "astro preview",
     "astro": "astro",
-    "format": "prettier --write ."
+    "fmt": "prettier --write ."
   },
   "dependencies": {
     "@astrojs/react": "^4.2.0",

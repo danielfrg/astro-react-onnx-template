@@ -1,12 +1,8 @@
-export interface ModelStats {
-  device: string;
-  loadTime: number;
-}
-
 export interface SessionResult {
   success: boolean;
   device: string;
   warning?: string;
+  loadTime: number | null;
 }
 
 export interface ModelResult {
@@ -22,12 +18,12 @@ export interface ModelState {
 }
 
 export interface WorkerMessage {
-  type: "status" | "pong" | "error" | "stats" | "result";
+  type: "pong" | "status" | "result" | "error";
   data: any;
 }
 
 export interface WorkerRequest {
-  type: "ping" | "run" | "stats";
+  type: "ping" | "run";
   data?: {
     input?: number[];
   };

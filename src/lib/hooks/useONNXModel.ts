@@ -12,14 +12,12 @@ export function useONNXModel({ workerPath, onError }: UseONNXModelOptions) {
     loading: false,
     status: "Initializing",
     inferenceTime: null,
+    loadTime: null,
   });
 
   const [result, setResult] = useState<number[] | null>(null);
-
-  // Worker reference
   const workerRef = useRef<Worker | null>(null);
 
-  // Start worker
   useEffect(() => {
     if (!workerRef.current) {
       try {
@@ -27,18 +25,13 @@ export function useONNXModel({ workerPath, onError }: UseONNXModelOptions) {
           type: "module",
         });
         workerRef.current.addEventListener("message", handleWorkerMessage);
-
-        // Initialize worker, load model
         workerRef.current.postMessage({ type: "ping" });
-
         setModelState((prev) => ({ ...prev, loading: true }));
       } catch (error) {
         const errorMessage =
           error instanceof Error
             ? error.message
             : "Failed to initialize worker";
-
-        // Send error
         onError?.(errorMessage);
         setModelState((prev) => ({
           ...prev,
@@ -66,12 +59,13 @@ export function useONNXModel({ workerPath, onError }: UseONNXModelOptions) {
           break;
 
         case "pong": {
-          const { success, device, warning } = data;
+          const { success, device, warning, loadTime } = data;
           if (success) {
             setModelState((prev) => ({
               ...prev,
               loading: false,
               device,
+              loadTime,
               status: warning
                 ? `Model loaded with warnings: ${warning} - You may still be able to run inference.`
                 : "Model loaded successfully. Ready to run inference.",
@@ -134,7 +128,6 @@ export function useONNXModel({ workerPath, onError }: UseONNXModelOptions) {
       } catch (error) {
         const errorMessage =
           error instanceof Error ? error.message : "Unknown error";
-
         setModelState((prev) => ({
           ...prev,
           status: `Error running inference: ${errorMessage}`,
