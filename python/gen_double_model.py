@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import onnx
 import torch
 import torch.nn as nn
 import torch.onnx
@@ -47,3 +48,7 @@ def export_model(fpath):
 
 if __name__ == "__main__":
     export_model(Path("../public/models"))
+
+    onnx_model = onnx.load("../public/models/double_vector.onnx")
+    onnx.checker.check_model(onnx_model)
+    print("Model is valid")
