@@ -121,6 +121,20 @@ const OnnxDoubleModel: React.FC = () => {
               </div>
             )}
           </div>
+
+          <div className="px-6 py-1 bg-slate-50 border-t border-slate-200">
+            <div className="flex flex flex-col items-center justify-between text-sm text-slate-600">
+              <div className="mt-2 sm:mt-0 flex items-center space-x-4">
+                <a
+                  href="https://github.com/danielfrg/astro-react-onnx-template"
+                  className="underline hover:text-blue-600 transition-colors"
+                  target="_blank"
+                >
+                  Source
+                </a>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
