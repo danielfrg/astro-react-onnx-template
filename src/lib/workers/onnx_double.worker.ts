@@ -109,13 +109,13 @@ const handleModelInit = async () => {
 
     // Loaded successfully
     sendMessage({
-      type: "pong",
+      type: "ready",
       data: sessionResult,
     });
   } catch (error) {
     console.error("Error during initialization:", error);
     sendMessage({
-      type: "pong",
+      type: "ready",
       data: {
         success: true,
         device: "fallback",
@@ -160,7 +160,7 @@ self.onmessage = async (e: MessageEvent<WorkerRequest>) => {
 
   try {
     switch (type) {
-      case "ping":
+      case "init":
         await handleModelInit();
         break;
 

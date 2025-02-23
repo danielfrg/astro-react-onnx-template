@@ -19,16 +19,15 @@ def export_model(fpath):
 
     model.eval()
 
-    dummy_input = torch.randn(4, dtype=torch.float32)
-
-    full_path = fpath / "double_vector.onnx"
-
     test_input = torch.tensor([1.0, 2.0, 3.0, 4.0], dtype=torch.float32)
     with torch.no_grad():
         output = model(test_input)
 
     print(f"input: {test_input.tolist()}")
     print(f"output: {output.tolist()}")
+
+    full_path = fpath / "double_vector.onnx"
+    dummy_input = torch.randn(4, dtype=torch.float32)
 
     torch.onnx.export(
         model,

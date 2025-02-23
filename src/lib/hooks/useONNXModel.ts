@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import type { ModelState, WorkerMessage, ModelResult } from "../workers/types";
 
-import MyWorker from "../workers/worker_onnx_double.ts?worker";
+// This is important for Vite to bundle the worker correctly
+import ModelWorker from "../workers/onnx_double.worker.ts?worker";
 
 export interface UseONNXModelOptions {
   onError?: (error: string) => void;
@@ -12,7 +13,6 @@ export function useONNXModel({ onError }: UseONNXModelOptions) {
     device: null,
     loading: false,
     status: "Initializing",
-    inferenceTime: null,
     loadTime: null,
   });
 
@@ -22,14 +22,13 @@ export function useONNXModel({ onError }: UseONNXModelOptions) {
   useEffect(() => {
     if (!workerRef.current) {
       try {
-        // workerRef.current = new Worker(new URL(workerPath, import.meta.url), {
-        //   type: "module",
-        // });
-        const worker = new MyWorker();
+        const worker = new ModelWorker();
         workerRef.current = worker;
 
         workerRef.current.addEventListener("message", handleWorkerMessage);
-        workerRef.current.postMessage({ type: "ping" });
+
+        // Tell worker to initialize the model
+        workerRef.current.postMessage({ type: "init" });
         setModelState((prev) => ({ ...prev, loading: true }));
       } catch (error) {
         const errorMessage =
@@ -62,7 +61,7 @@ export function useONNXModel({ onError }: UseONNXModelOptions) {
           setModelState((prev) => ({ ...prev, status: data.message }));
           break;
 
-        case "pong": {
+        case "ready":
           const { success, device, warning, loadTime } = data;
           if (success) {
             setModelState((prev) => ({
@@ -82,18 +81,8 @@ export function useONNXModel({ onError }: UseONNXModelOptions) {
             }));
           }
           break;
-        }
 
-        case "error":
-          setModelState((prev) => ({
-            ...prev,
-            loading: false,
-            status: `Error: ${data.message}`,
-          }));
-          onError?.(data.message);
-          break;
-
-        case "result": {
+        case "result":
           const result = data as ModelResult;
           setResult(result.output);
           setModelState((prev) => ({
@@ -103,7 +92,15 @@ export function useONNXModel({ onError }: UseONNXModelOptions) {
             inferenceTime: result.duration,
           }));
           break;
-        }
+
+        case "error":
+          setModelState((prev) => ({
+            ...prev,
+            loading: false,
+            status: `Error: ${data.message}`,
+          }));
+          onError?.(data.message);
+          break;
 
         default:
           console.warn("Unknown message type:", type);
